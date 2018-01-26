@@ -121,7 +121,7 @@ namespace aspect
                   {
                     fe_values.reinit (cell);
                     // Set use_strain_rates to false since we don't need viscosity
-                    in.reinit(fe_values, &cell, this->introspection(), this->get_solution(), false);
+                    in.reinit(fe_values, cell, this->introspection(), this->get_solution(), false);
 
                     this->get_material_model().evaluate(in, out);
 
@@ -801,7 +801,7 @@ namespace aspect
           prm.declare_entry("Density above","0",
                             Patterns::Double (0),
                             "The density value above the surface boundary.");
-          prm.declare_entry("Density below","8000",
+          prm.declare_entry("Density below","9900",
                             Patterns::Double (0),
                             "The density value below the CMB boundary.");
           prm.declare_entry("Also output the spherical harmonic coefficients of geoid anomaly", "false",

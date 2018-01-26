@@ -142,6 +142,15 @@ namespace aspect
                        "Units: Years or seconds, depending on the ``Use years "
                        "in output instead of seconds'' parameter.");
 
+    prm.declare_entry ("Maximum relative increase in time step", boost::lexical_cast<std::string>(std::numeric_limits<int>::max()),
+                       Patterns::Double (0),
+                       "Set a percentage with which the the time step is limited to increase. Generally the "
+                       "time step based on the CFL number should be sufficient, but for complicated models "
+                       "which may suddenly drastically change behavoir, it may be usefull to limit the increase "
+                       "in the timestep, without limiting the time step size of the whole simulation to a "
+                       "particular number if this value is $50$, then that means that the time step can at most "
+                       "increase by 50\\% from one time step to the next, or by a factor of 1.5.");
+
     prm.declare_entry ("Use conduction timestep", "false",
                        Patterns::Bool (),
                        "Mantle convection simulations are often focused on convection "
@@ -151,7 +160,7 @@ namespace aspect
                        "heat conduction in determining the length of each time step.");
 
     prm.declare_entry ("Nonlinear solver scheme", "IMPES",
-                       Patterns::Selection ("IMPES|iterated IMPES|iterated Stokes|Stokes only|Advection only"),
+                       Patterns::Selection ("IMPES|iterated IMPES|iterated Stokes|Newton Stokes|Stokes only|Advection only"),
                        "The kind of scheme used to resolve the nonlinearity in the system. "
                        "'IMPES' is the classical IMplicit Pressure Explicit Saturation scheme "
                        "in which ones solves the temperatures and Stokes equations exactly "
@@ -318,6 +327,14 @@ namespace aspect
                        "the composition system gets solved. See `linear solver "
                        "tolerance' for more details.");
 
+    prm.declare_entry ("Use operator splitting", "false",
+                       Patterns::Bool(),
+                       "If set to true, the advection and reactions of compositional fields and "
+                       "temperature are solved separately, and can use different time steps. Note that "
+                       "this will only work if the material/heating model fills the reaction\\_rates/"
+                       "heating\\_reaction\\_rates structures. Operator splitting can be used with any "
+                       "existing solver schemes that solve the temperature/composition equations.");
+
     prm.enter_subsection ("Solver parameters");
     {
       prm.enter_subsection ("Newton solver parameters");
@@ -338,6 +355,18 @@ namespace aspect
                            "The maximum number of line search iterations allowed. If the "
                            "criterion is not reached after this iteration, we apply the scaled "
                            "increment to the solution and continue.");
+
+        prm.declare_entry ("Use Newton residual scaling method", "false",
+                           Patterns::Bool (),
+                           "This method allows to slowly introduce the derivatives based on the improvement "
+                           "of the residual. If set to false, the scaling factor for the Newton derivatives "
+                           "is set to one immediately when switching on the Newton solver.");
+
+        prm.declare_entry ("Maximum linear Stokes solver tolerance", "0.9",
+                           Patterns::Double (0,1),
+                           "When the linear Stokes solver tolerance is dynamically chosen, this defines "
+                           "the most loose tolerance allowed.");
+
       }
       prm.leave_subsection ();
       prm.enter_subsection ("AMG parameters");
@@ -381,6 +410,33 @@ namespace aspect
                            "Turns on extra information on the AMG solver. Note that this will generate much more output.");
       }
       prm.leave_subsection ();
+      prm.enter_subsection ("Operator splitting parameters");
+      {
+        prm.declare_entry ("Reaction time step", "1000.0",
+                           Patterns::Double (0),
+                           "Set a time step size for computing reactions of compositional fields and the "
+                           "temperature field in case operator splitting is used. This is only used "
+                           "when the nonlinear solver scheme ``operator splitting'' is selected. "
+                           "The reaction time step must be greater than 0. "
+                           "If you want to prescribe the reaction time step only as a relative value "
+                           "compared to the advection time step as opposed to as an absolute value, you "
+                           "should use the parameter ``Reaction time steps per advection step'' and set "
+                           "this parameter to the same (or larger) value as the ``Maximum time step'' "
+                           "(which is 5.69e+300 by default). "
+                           "Units: Years or seconds, depending on the ``Use years "
+                           "in output instead of seconds'' parameter.");
+
+        prm.declare_entry ("Reaction time steps per advection step", "0",
+                           Patterns::Integer (0),
+                           "The number of reaction time steps done within one advection time step "
+                           "in case operator splitting is used. This is only used if the nonlinear "
+                           "solver scheme ``operator splitting'' is selected. If set to zero, this "
+                           "parameter is ignored. Otherwise, the reaction time step size is chosen according to "
+                           "this criterion and the ``Reaction time step'', whichever yields the "
+                           "smaller time step. "
+                           "Units: none.");
+      }
+      prm.leave_subsection ();
     }
     prm.leave_subsection ();
 
@@ -410,7 +466,7 @@ namespace aspect
                          "density that depends on temperature and depth and not on the pressure.}");
 
       prm.declare_entry ("Mass conservation", "ask material model",
-                         Patterns::Selection ("incompressible|isothermal compression|"
+                         Patterns::Selection ("incompressible|isothermal compression|hydrostatic compression|"
                                               "reference density profile|implicit reference density profile|"
                                               "ask material model"),
                          "Possible approximations for the density derivatives in the mass "
@@ -491,33 +547,6 @@ namespace aspect
                          "implemented in a plugin in the BoundaryComposition "
                          "group, unless an existing implementation in this group "
                          "already provides what you want.");
-      prm.declare_entry ("Zero velocity boundary indicators", "",
-                         Patterns::List (Patterns::Anything()),
-                         "A comma separated list of names denoting those boundaries "
-                         "on which the velocity is zero."
-                         "\n\n"
-                         "The names of the boundaries listed here can either by "
-                         "numbers (in which case they correspond to the numerical "
-                         "boundary indicators assigned by the geometry object), or they "
-                         "can correspond to any of the symbolic names the geometry object "
-                         "may have provided for each part of the boundary. You may want "
-                         "to compare this with the documentation of the geometry model you "
-                         "use in your model.");
-      prm.declare_entry ("Tangential velocity boundary indicators", "",
-                         Patterns::List (Patterns::Anything()),
-                         "A comma separated list of names denoting those boundaries "
-                         "on which the velocity is tangential and unrestrained, i.e., free-slip where "
-                         "no external forces act to prescribe a particular tangential "
-                         "velocity (although there is a force that requires the flow to "
-                         "be tangential)."
-                         "\n\n"
-                         "The names of the boundaries listed here can either by "
-                         "numbers (in which case they correspond to the numerical "
-                         "boundary indicators assigned by the geometry object), or they "
-                         "can correspond to any of the symbolic names the geometry object "
-                         "may have provided for each part of the boundary. You may want "
-                         "to compare this with the documentation of the geometry model you "
-                         "use in your model.");
       prm.declare_entry ("Free surface boundary indicators", "",
                          Patterns::List (Patterns::Anything()),
                          "A comma separated list of names denoting those boundaries "
@@ -531,39 +560,6 @@ namespace aspect
                          "may have provided for each part of the boundary. You may want "
                          "to compare this with the documentation of the geometry model you "
                          "use in your model.");
-      prm.declare_entry ("Prescribed velocity boundary indicators", "",
-                         Patterns::Map (Patterns::Anything(),
-                                        Patterns::Selection(BoundaryVelocity::get_names<dim>())),
-                         "A comma separated list denoting those boundaries "
-                         "on which the velocity is prescribed, i.e., where unknown "
-                         "external forces act to prescribe a particular velocity. This is "
-                         "often used to prescribe a velocity that equals that of "
-                         "overlying plates."
-                         "\n\n"
-                         "The format of valid entries for this parameter is that of a map "
-                         "given as ``key1 [selector]: value1, key2 [selector]: value2, key3: value3, ...'' where "
-                         "each key must be a valid boundary indicator (which is either an "
-                         "integer or the symbolic name the geometry model in use may have "
-                         "provided for this part of the boundary) "
-                         "and each value must be one of the currently implemented boundary "
-                         "velocity models. ``selector'' is an optional string given as a subset "
-                         "of the letters `xyz' that allows you to apply the boundary conditions "
-                         "only to the components listed. As an example, '1 y: function' applies "
-                         "the type `function' to the y component on boundary 1. Without a selector "
-                         "it will affect all components of the velocity."
-                         "\n\n"
-                         "Note that the no-slip boundary condition is "
-                         "a special case of the current one where the prescribed velocity "
-                         "happens to be zero. It can thus be implemented by indicating that "
-                         "a particular boundary is part of the ones selected "
-                         "using the current parameter and using ``zero velocity'' as "
-                         "the boundary values. Alternatively, you can simply list the "
-                         "part of the boundary on which the velocity is to be zero with "
-                         "the parameter ``Zero velocity boundary indicator'' in the "
-                         "current parameter section."
-                         "\n\n"
-                         "Note that when ``Use years in output instead of seconds'' is set "
-                         "to true, velocity should be given in m/yr. ");
       prm.declare_entry ("Prescribed traction boundary indicators", "",
                          Patterns::Map (Patterns::Anything(),
                                         Patterns::Selection(BoundaryTraction::get_names<dim>())),
@@ -912,11 +908,36 @@ namespace aspect
                          Patterns::List(Patterns::Anything()),
                          "A user-defined name for each of the compositional fields requested.");
       prm.declare_entry ("Compositional field methods", "",
-                         Patterns::List (Patterns::Selection("field|particles")),
+                         Patterns::List (Patterns::Selection("field|particles|static")),
                          "A comma separated list denoting the solution method of each "
                          "compositional field. Each entry of the list must be "
                          "one of the currently implemented field types: "
-                         "``field'', or ``particles''.");
+                         "``field'', ``particles'', or ``static''."
+                         "\n\n"
+                         "These choices correspond to the following methods by which "
+                         "compositional fields gain their values:"
+                         "\\begin{itemize}"
+                         "\\item ``field'': If a compositional field is marked with this "
+                         "method, then its values are computed in each time step by "
+                         "advecting along the values of the previous time step using the "
+                         "velocity field, and applying reaction rates to it. In other words, "
+                         "this corresponds to the usual notion of a composition field as "
+                         "mentioned in Section~\\ref{sec:compositional}. "
+                         "\n"
+                         "\\item ``particles'': If a compositional field is marked with "
+                         "this method, then its values are obtained in each time step "
+                         "by interpolating the corresponding properties from the "
+                         "particles located on each cell. The time evolution therefore "
+                         "happens because particles move along with the velocity field, "
+                         "and particle properties can react with each other as well. "
+                         "See Section~\\ref{sec:particles} for more information about "
+                         "how particles behave."
+                         "\n"
+                         "\\item ``static'': If a compositional field is marked "
+                         "this way, then it does not evolve at all. Its values are "
+                         "simply set to the initial conditions, and will then "
+                         "never change."
+                         "\\end{itemize}");
       prm.declare_entry ("Mapped particle properties", "",
                          Patterns::Map (Patterns::Anything(),
                                         Patterns::Anything()),
@@ -1006,6 +1027,8 @@ namespace aspect
     if (convert_to_years == true)
       maximum_time_step *= year_in_seconds;
 
+    maximum_relative_increase_time_step = prm.get_double("Maximum relative increase in time step") * 0.01;
+
     if (prm.get ("Nonlinear solver scheme") == "IMPES")
       nonlinear_solver = NonlinearSolver::IMPES;
     else if (prm.get ("Nonlinear solver scheme") == "iterated IMPES")
@@ -1014,6 +1037,8 @@ namespace aspect
       nonlinear_solver = NonlinearSolver::iterated_Stokes;
     else if (prm.get ("Nonlinear solver scheme") == "Stokes only")
       nonlinear_solver = NonlinearSolver::Stokes_only;
+    else if (prm.get ("Nonlinear solver scheme") == "Newton Stokes")
+      nonlinear_solver = NonlinearSolver::Newton_Stokes;
     else if (prm.get ("Nonlinear solver scheme") == "Advection only")
       nonlinear_solver = NonlinearSolver::Advection_only;
     else
@@ -1026,6 +1051,8 @@ namespace aspect
         nonlinear_switch_tolerance = prm.get_double("Nonlinear Newton solver switch tolerance");
         max_pre_newton_nonlinear_iterations = prm.get_integer ("Max pre-Newton nonlinear iterations");
         max_newton_line_search_iterations = prm.get_integer ("Max Newton line search iterations");
+        use_newton_residual_scaling_method = prm.get_bool("Use Newton residual scaling method");
+        maximum_linear_stokes_solver_tolerance = prm.get_double("Maximum linear Stokes solver tolerance");
       }
       prm.leave_subsection ();
       prm.enter_subsection ("AMG parameters");
@@ -1034,6 +1061,16 @@ namespace aspect
         AMG_smoother_sweeps                    = prm.get_integer ("AMG smoother sweeps");
         AMG_aggregation_threshold              = prm.get_double ("AMG aggregation threshold");
         AMG_output_details                     = prm.get_bool ("AMG output details");
+      }
+      prm.leave_subsection ();
+      prm.enter_subsection ("Operator splitting parameters");
+      {
+        reaction_time_step       = prm.get_double("Reaction time step");
+        AssertThrow (reaction_time_step > 0,
+                     ExcMessage("Reaction time step must be greater than 0."));
+        if (convert_to_years == true)
+          reaction_time_step *= year_in_seconds;
+        reaction_steps_per_advection_step = prm.get_integer ("Reaction time steps per advection step");
       }
       prm.leave_subsection ();
     }
@@ -1089,6 +1126,7 @@ namespace aspect
     n_expensive_stokes_solver_steps = prm.get_integer ("Maximum number of expensive Stokes solver steps");
     temperature_solver_tolerance    = prm.get_double ("Temperature solver tolerance");
     composition_solver_tolerance    = prm.get_double ("Composition solver tolerance");
+    use_operator_splitting          = prm.get_bool("Use operator splitting");
 
     prm.enter_subsection ("Mesh refinement");
     {
@@ -1398,6 +1436,8 @@ namespace aspect
             compositional_field_methods[i] = AdvectionFieldMethod::fem_field;
           else if (x_compositional_field_methods[i] == "particles")
             compositional_field_methods[i] = AdvectionFieldMethod::particles;
+          else if (x_compositional_field_methods[i] == "static")
+            compositional_field_methods[i] = AdvectionFieldMethod::static_field;
           else
             AssertThrow(false,ExcNotImplemented());
         }
@@ -1514,6 +1554,13 @@ namespace aspect
     // plugin mechanism, declare their parameters if they have subscribed
     // to the relevant signals
     SimulatorSignals<dim>::parse_additional_parameters (*this, prm);
+
+    AssertThrow((!use_direct_stokes_solver) || (nullspace_removal == NullspaceRemoval::none),
+                ExcMessage("Because of the difference in system partitioning, nullspace removal is "
+                           "currently not compatible with the direct solver. "
+                           "Please turn off one or both of the options 'Model settings/Remove nullspace', "
+                           "or 'Use direct solver for Stokes system', or contribute code to enable "
+                           "this feature combination."));
   }
 
 
@@ -1562,40 +1609,6 @@ namespace aspect
 
       try
         {
-          const std::vector<types::boundary_id> x_zero_velocity_boundary_indicators
-            = geometry_model.translate_symbolic_boundary_names_to_ids(Utilities::split_string_list
-                                                                      (prm.get ("Zero velocity boundary indicators")));
-          zero_velocity_boundary_indicators
-            = std::set<types::boundary_id> (x_zero_velocity_boundary_indicators.begin(),
-                                            x_zero_velocity_boundary_indicators.end());
-        }
-      catch (const std::string &error)
-        {
-          AssertThrow (false, ExcMessage ("While parsing the entry <Model settings/Zero velocity "
-                                          "boundary indicators>, there was an error. Specifically, "
-                                          "the conversion function complained as follows: "
-                                          + error));
-        }
-
-      try
-        {
-          const std::vector<types::boundary_id> x_tangential_velocity_boundary_indicators
-            = geometry_model.translate_symbolic_boundary_names_to_ids(Utilities::split_string_list
-                                                                      (prm.get ("Tangential velocity boundary indicators")));
-          tangential_velocity_boundary_indicators
-            = std::set<types::boundary_id> (x_tangential_velocity_boundary_indicators.begin(),
-                                            x_tangential_velocity_boundary_indicators.end());
-        }
-      catch (const std::string &error)
-        {
-          AssertThrow (false, ExcMessage ("While parsing the entry <Model settings/Tangential velocity "
-                                          "boundary indicators>, there was an error. Specifically, "
-                                          "the conversion function complained as follows: "
-                                          + error));
-        }
-
-      try
-        {
           const std::vector<types::boundary_id> x_free_surface_boundary_indicators
             = geometry_model.translate_symbolic_boundary_names_to_ids(Utilities::split_string_list
                                                                       (prm.get ("Free surface boundary indicators")));
@@ -1611,95 +1624,6 @@ namespace aspect
                                           "boundary indicators>, there was an error. Specifically, "
                                           "the conversion function complained as follows: "
                                           + error));
-        }
-
-      const std::vector<std::string> x_prescribed_velocity_boundary_indicators
-        = Utilities::split_string_list
-          (prm.get ("Prescribed velocity boundary indicators"));
-      for (std::vector<std::string>::const_iterator p = x_prescribed_velocity_boundary_indicators.begin();
-           p != x_prescribed_velocity_boundary_indicators.end(); ++p)
-        {
-          // each entry has the format (white space is optional):
-          // <id> [x][y][z] : <value (might have spaces)>
-          //
-          // first tease apart the two halves
-          const std::vector<std::string> split_parts = Utilities::split_string_list (*p, ':');
-          AssertThrow (split_parts.size() == 2,
-                       ExcMessage ("The format for prescribed velocity boundary indicators "
-                                   "requires that each entry has the form `"
-                                   "<id> [x][y][z] : <value>', but there does not "
-                                   "appear to be a colon in the entry <"
-                                   + *p
-                                   + ">."));
-
-          // the easy part: get the value
-          const std::string value = split_parts[1];
-
-          // now for the rest. since we don't know whether there is a
-          // component selector, start reading at the end and subtracting
-          // letters x, y and z
-          std::string key_and_comp = split_parts[0];
-          std::string comp;
-          while ((key_and_comp.size()>0) &&
-                 ((key_and_comp[key_and_comp.size()-1] == 'x')
-                  ||
-                  (key_and_comp[key_and_comp.size()-1] == 'y')
-                  ||
-                  ((key_and_comp[key_and_comp.size()-1] == 'z') && (dim==3))))
-            {
-              comp += key_and_comp[key_and_comp.size()-1];
-              key_and_comp.erase (--key_and_comp.end());
-            }
-
-          // we've stopped reading component selectors now. there are three
-          // possibilities:
-          // - no characters are left. this means that key_and_comp only
-          //   consisted of a single word that only consisted of 'x', 'y'
-          //   and 'z's. then this would have been a mistake to classify
-          //   as a component selector, and we better undo it
-          // - the last character of key_and_comp is not a whitespace. this
-          //   means that the last word in key_and_comp ended in an 'x', 'y'
-          //   or 'z', but this was not meant to be a component selector.
-          //   in that case, put these characters back.
-          // - otherwise, we split successfully. eat spaces that may be at
-          //   the end of key_and_comp to get key
-          if (key_and_comp.size() == 0)
-            key_and_comp.swap (comp);
-          else if (key_and_comp[key_and_comp.size()-1] != ' ')
-            {
-              key_and_comp += comp;
-              comp = "";
-            }
-          else
-            {
-              while ((key_and_comp.size()>0) && (key_and_comp[key_and_comp.size()-1] == ' '))
-                key_and_comp.erase (--key_and_comp.end());
-            }
-
-          // finally, try to translate the key into a boundary_id. then
-          // make sure we haven't seen it yet
-          types::boundary_id boundary_id;
-          try
-            {
-              boundary_id = geometry_model.translate_symbolic_boundary_name_to_id(key_and_comp);
-            }
-          catch (const std::string &error)
-            {
-              AssertThrow (false, ExcMessage ("While parsing the entry <Model settings/Prescribed "
-                                              "velocity indicators>, there was an error. Specifically, "
-                                              "the conversion function complained as follows: "
-                                              + error));
-            }
-
-          AssertThrow (prescribed_velocity_boundary_indicators.find(boundary_id)
-                       == prescribed_velocity_boundary_indicators.end(),
-                       ExcMessage ("Boundary indicator <" + Utilities::int_to_string(boundary_id) +
-                                   "> appears more than once in the list of indicators "
-                                   "for nonzero velocity boundaries."));
-
-          // finally, put it into the list
-          prescribed_velocity_boundary_indicators[boundary_id] =
-            std::pair<std::string,std::string>(comp,value);
         }
 
       const std::vector<std::string> x_prescribed_traction_boundary_indicators
@@ -1814,9 +1738,9 @@ namespace aspect
     InitialComposition::Manager<dim>::declare_parameters (prm);
     PrescribedStokesSolution::declare_parameters<dim> (prm);
     BoundaryTemperature::Manager<dim>::declare_parameters (prm);
-    BoundaryComposition::declare_parameters<dim> (prm);
+    BoundaryComposition::Manager<dim>::declare_parameters (prm);
     AdiabaticConditions::declare_parameters<dim> (prm);
-    BoundaryVelocity::declare_parameters<dim> (prm);
+    BoundaryVelocity::Manager<dim>::declare_parameters (prm);
     BoundaryTraction::declare_parameters<dim> (prm);
   }
 }

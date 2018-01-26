@@ -12,10 +12,10 @@
 # sed -i "" -f update_source_files_to_2.0.0.sed FILENAME
 
 # Rename compositional initial conditions
-s/Compositional initial conditions/Initial composition model/g
+s/subsection Compositional initial conditions/Initial composition model/g
 
 # Rename initial (temperature) conditions
-s/Initial conditions/Initial temperature model/g
+s/subsection Initial conditions/Initial temperature model/g
 
 # Replace the 'model name' parameter by 'List of model names'
 # in all subsections that now use the new parameter.
@@ -25,6 +25,10 @@ s/Initial conditions/Initial temperature model/g
 # after a subsection nested inside the 'Boundary temperature model'
 # subsection the following will simply do nothing).
 /subsection Boundary temperature model/,/\<end\>/ {
+     s/set Model name/set List of model names/g
+}
+
+/subsection Boundary composition model/,/\<end\>/ {
      s/set Model name/set List of model names/g
 }
 
@@ -45,6 +49,10 @@ s/initial-conditions/initial-temperature/g
 s/seismic vs/named additional outputs/g
 s/seismic vp/named additional outputs/g
 s/named additional outputs.*named additional outputs/named additional outputs/g
+s/friction heating/heating/g
+s/viscous dissipation statistics/heating statistics/g
+s/heating statistics.*heating statistics/heating statistics/g
+
 
 # Make all instances of boussinesq into Boussinesq
 s/boussinesq/Boussinesq/g

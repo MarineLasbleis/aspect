@@ -49,7 +49,7 @@ namespace aspect
 
 
     template <int dim>
-    const std::vector<double> &
+    std::vector<double>
     PlasticAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
       AssertIndexRange (idx, 2);
@@ -477,7 +477,8 @@ namespace aspect
 
       // We need the velocity gradient for the finite strain (they are not included in material model inputs),
       // so we get them from the finite element.
-      if (in.cell && use_strain_weakening == true && use_finite_strain_tensor == true && this->get_timestep_number() > 0)
+      if (in.current_cell.state() == IteratorState::valid && use_strain_weakening == true
+          && use_finite_strain_tensor == true && this->get_timestep_number() > 0)
         {
           const QGauss<dim> quadrature_formula (this->get_fe().base_element(this->introspection().base_elements.velocities).degree+1);
           FEValues<dim> fe_values (this->get_mapping(),
@@ -487,13 +488,13 @@ namespace aspect
 
           std::vector<Tensor<2,dim> > velocity_gradients (quadrature_formula.size(), Tensor<2,dim>());
 
-          fe_values.reinit (*in.cell);
+          fe_values.reinit (in.current_cell);
           fe_values[this->introspection().extractors.velocities].get_function_gradients (this->get_solution(),
                                                                                          velocity_gradients);
 
           // Assign the strain components to the compositional fields reaction terms.
           // If there are too many fields, we simply fill only the first fields with the
-          // existing strain rate tensor components.
+          // existing strain tensor components.
           for (unsigned int q=0; q < in.position.size(); ++q)
             {
               // Convert the compositional fields into the tensor quantity they represent.
@@ -647,15 +648,15 @@ namespace aspect
                              "List of viscosity prefactors, $A$, for background material and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "If only one value is given, then all use the same value. "
-                             "Units: $Pa^{-n_{diffusion}} m^{n_{diffusion}/m_{diffusion}} s^{-1}$");
+                             "Units: $Pa^{-n_\\text{diffusion}} m^{n_\\text{diffusion}/m_\\text{diffusion}} s^{-1}$");
           prm.declare_entry ("Stress exponents for diffusion creep", "1",
                              Patterns::List(Patterns::Double(0)),
-                             "List of stress exponents, $n_diffusion$, for background material and compositional fields, "
+                             "List of stress exponents, $n_\\text{diffusion}$, for background material and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "If only one value is given, then all use the same value.  Units: None");
           prm.declare_entry ("Grain size exponents for diffusion creep", "3",
                              Patterns::List(Patterns::Double(0)),
-                             "List of grain size exponents, $m_diffusion$, for background material and compositional fields, "
+                             "List of grain size exponents, $m_\\text{diffusion}$, for background material and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "If only one value is given, then all use the same value.  Units: None");
           prm.declare_entry ("Activation energies for diffusion creep", "375e3",
@@ -675,10 +676,10 @@ namespace aspect
                              "List of viscosity prefactors, $A$, for background material and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "If only one value is given, then all use the same value. "
-                             "Units: $Pa^{-n_{dislocation}} m^{n_{dislocation}/m_{dislocation}} s^{-1}$");
+                             "Units: $Pa^{-n_\\text{dislocation}} m^{n_\\text{dislocation}/m_\\text{dislocation}} s^{-1}$");
           prm.declare_entry ("Stress exponents for dislocation creep", "3.5",
                              Patterns::List(Patterns::Double(0)),
-                             "List of stress exponents, $n_dislocation$, for background material and compositional fields, "
+                             "List of stress exponents, $n_\\text{dislocation}$, for background material and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "If only one value is given, then all use the same value.  Units: None");
           prm.declare_entry ("Activation energies for dislocation creep", "530e3",
@@ -908,8 +909,8 @@ namespace aspect
                                    "(Anne Glerum) material models. "
                                    "\n\n "
                                    "The viscosity for dislocation or diffusion creep is defined as "
-                                   "\\[v = 0.5 * A^{-\\frac{1}{n}} * d^{\\frac{m}{n}} * "
-                                   "\\dot{\\varepsilon}_{ii}^{\\frac{1-n}{n}} * "
+                                   "\\[v = \\frac 12 A^{-\\frac{1}{n}} d^{\\frac{m}{n}} "
+                                   "\\dot{\\varepsilon}_{ii}^{\\frac{1-n}{n}} "
                                    "\\exp\\left(\\frac{E + PV}{nRT}\\right)\\] "
                                    "where $A$ is the prefactor, $n$ is the stress exponent, "
                                    "$\\dot{\\varepsilon}_{ii}$ is the square root of the deviatoric "
@@ -921,9 +922,9 @@ namespace aspect
                                    "geodynamic simulations.  See, for example, Billen and Hirth "
                                    "(2007), G3, 8, Q08012."
                                    "\n\n "
-                                   "One may select to use the diffusion ($v_{diff}$; $n=1$, $m!=0$), "
-                                   "dislocation ($v_{disl}$, $n>1$, $m=0$) or composite "
-                                   "$\\frac{v_{diff}*v_{disl}}{v_{diff}+v_{disl}}$ equation form. "
+                                   "One may select to use the diffusion ($v_\\text{diff}$; $n=1$, $m!=0$), "
+                                   "dislocation ($v_\\text{disl}$, $n>1$, $m=0$) or composite "
+                                   "$\\frac{v_\\text{diff}*v_\\text{disl}}{v_\\text{diff}+v_\\text{disl}}$ equation form. "
                                    "\n\n "
                                    "Viscosity is limited through one of two different `yielding' mechanisms. "
                                    "\n\n"
@@ -937,10 +938,10 @@ namespace aspect
                                    "internal friction.  Note that the 2D form is equivalent to the "
                                    "Mohr Coulomb yield surface.  If $\\phi$ is 0, the yield stress "
                                    "is fixed and equal to the cohesion (Von Mises yield criterion). "
-                                   "When the viscous stress ($2v{\\varepsilon}_{ii}$) "
+                                   "When the viscous stress ($2v{\\varepsilon}_{ii}$) exceeds "
                                    "the yield stress, the viscosity is rescaled back to the yield "
                                    "surface: $v_{y}=\\sigma_{y}/(2{\\varepsilon}_{ii})$. "
-                                   "This form of plasticity is commonly used in geodynamic models "
+                                   "This form of plasticity is commonly used in geodynamic models. "
                                    "See, for example, Thieulot, C. (2011), PEPI 188, pp. 47-68. "
                                    "\n\n"
                                    "The user has the option to linearly reduce the cohesion and "
@@ -950,18 +951,18 @@ namespace aspect
                                    "identical to the compositional field finite strain plugin and cookbook "
                                    "described in the manual (author: Gassmoeller, Dannberg). If the user selects to track "
                                    "the finite strain invariant ($e_{ii}$), a single compositional field tracks "
-                                   "the value derived from $e_{ii}^t = (e_{ii})^(t-1) + \\dot{e}_{ii}*dt$, where $t$ and $t-1$ "
+                                   "the value derived from $e_{ii}^t = (e_{ii})^{(t-1)} + \\dot{e}_{ii}\\; dt$, where $t$ and $t-1$ "
                                    "are the current and prior time steps, $\\dot{e}_{ii}$ is the second invariant of the "
                                    "strain rate tensor and $dt$ is the time step size. In the case of the "
                                    "full strain tensor $F$, the finite strain magnitude is derived from the "
                                    "second invariant of the symmetric stretching tensor $L$, where "
-                                   "$L = F * [F]^T$. The user must specify a single compositional "
+                                   "$L = F [F]^T$. The user must specify a single compositional "
                                    "field for the finite strain invariant or multiple fields (4 in 2D, 9 in 3D) "
-                                   "for the finite strain tensor. These field(s) must be the first lised "
+                                   "for the finite strain tensor. These field(s) must be the first listed "
                                    "compositional fields in the parameter file. Note that one or more of the finite strain "
-                                   "tensor components must be assigned a non-zero value intially. This value can be "
-                                   "be quite small (ex: 1.e-8), but still non-zero. While the option to track and use "
-                                   "the full finite strain tensor exists, tracking the associated compositional "
+                                   "tensor components must be assigned a non-zero value initially. This value can be "
+                                   "be quite small (e.g., 1.e-8), but still non-zero. While the option to track and use "
+                                   "the full finite strain tensor exists, tracking the associated compositional fields "
                                    "is computationally expensive in 3D. Similarly, the finite strain magnitudes "
                                    "may in fact decrease if the orientation of the deformation field switches "
                                    "through time. Consequently, the ideal solution is track the finite strain "
@@ -972,8 +973,8 @@ namespace aspect
                                    "Viscous stress may also be limited by a non-linear stress limiter "
                                    "that has a form similar to the Peierls creep mechanism. "
                                    "This stress limiter assigns an effective viscosity "
-                                   "$\\sigma_eff = \\frac{\\tau_y}{2*\\varepsilon_y} "
-                                   "{\\frac{\\varepsilon_ii}{\\varepsilon_y}}^{\\frac{1}{n_y}-1}$ "
+                                   "$\\sigma_\\text{eff} = \\frac{\\tau_y}{2\\varepsilon_y} "
+                                   "{\\frac{\\varepsilon_{ii}}{\\varepsilon_y}}^{\\frac{1}{n_y}-1}$ "
                                    "Above $\\tau_y$ is a yield stress, $\\varepsilon_y$ is the "
                                    "reference strain rate, $\\varepsilon_{ii}$ is the strain rate "
                                    "and $n_y$ is the stress limiter exponent.  The yield stress, "
