@@ -260,7 +260,7 @@ namespace aspect
               double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
               melt_out->fluid_viscosities[i] = eta_f;
-              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,3) //* std::pow(1.0-porosity,2);
+              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,3); //* std::pow(1.0-porosity,2);
               melt_out->fluid_density_gradients[i] = Tensor<1,dim>();
 
               // temperature dependence of density is 1 - alpha * (T - T(adiabatic))
