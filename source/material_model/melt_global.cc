@@ -170,7 +170,7 @@ namespace aspect
               const double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
 
               // calculate viscosity based on local melt
-              out.viscosities[i] *= exp(- alpha_phi * porosity);
+              out.viscosities[i] *= std::max((1-porosity), 1e-6);  // exp(- alpha_phi * porosity);
 
               if (include_melting_and_freezing && in.strain_rate.size())
                 {
@@ -273,7 +273,14 @@ namespace aspect
               melt_out->fluid_densities[i] = reference_rho_f * temperature_dependence
                                              * std::exp(melt_compressibility * (in.pressure[i] - this->get_surface_pressure()));
 
-              melt_out->compaction_viscosities[i] = xi_0 * (1.0- porosity)/porosity;
+              if (porosity < 1e-8)
+                {
+                  melt_out->compaction_viscosities[i] = xi_0 * 1e8;
+                }
+              else
+                {
+                  melt_out->compaction_viscosities[i] = xi_0 * std::max((1.0- porosity), 1e-6)/porosity;
+                }
 
               double visc_temperature_dependence = 1.0;
               if (this->include_adiabatic_heating ())
