@@ -793,6 +793,21 @@ namespace aspect
     if (parameters.include_melt_transport)
       melt_handler->add_current_constraints (new_current_constraints);
 
+    if (parameters.include_melt_transport)
+      {
+        for (std::set<types::boundary_id>::const_iterator
+             p = boundary_temperature_manager.get_fixed_temperature_boundary_indicators().begin();
+             p != boundary_temperature_manager.get_fixed_temperature_boundary_indicators().end(); ++p)
+          {
+            VectorTools::interpolate_boundary_values (*mapping,
+                                                      dof_handler,
+                                                      *p,
+                                                      ZeroFunction<dim>(introspection.n_components),
+                                                      new_current_constraints,
+                                                      introspection.variable("compaction pressure").component_mask);
+          }
+      }
+
     // let plugins add more constraints if they so choose, then close the
     // constraints object
     signals.post_constraints_creation(*this, new_current_constraints);
