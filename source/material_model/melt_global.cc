@@ -44,7 +44,7 @@ namespace aspect
     reference_darcy_coefficient () const
     {
       // 0.01 = 1% melt
-      return reference_permeability * std::pow(0.01,3.0) / eta_f;
+      return reference_permeability ;//* std::pow(0.01,3.0) / eta_f;
     }
 
     template <int dim>
@@ -242,8 +242,16 @@ namespace aspect
             }
           else
             {
-              const double delta_temp = in.temperature[i]-reference_T;
+              if (reference_T > 0)
+              {
+                const double delta_temp = in.temperature[i]-reference_T;
               visc_temperature_dependence = std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T),1e4),1e-4);
+              }
+              else
+              {
+                visc_temperature_dependence = 1.;
+              }
+              
             }
           out.viscosities[i] *= visc_temperature_dependence;
         }
@@ -260,7 +268,7 @@ namespace aspect
               double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
               melt_out->fluid_viscosities[i] = eta_f;
-              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,3); //* std::pow(1.0-porosity,2);
+              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,2); //* std::pow(1.0-porosity,2);
               melt_out->fluid_density_gradients[i] = Tensor<1,dim>();
 
               // temperature dependence of density is 1 - alpha * (T - T(adiabatic))
@@ -290,8 +298,15 @@ namespace aspect
                 }
               else
                 {
-                  const double delta_temp = in.temperature[i]-reference_T;
-                  visc_temperature_dependence = std::max(std::min(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/reference_T),1e4),1e-4);
+                  if (reference_T > 0)
+                    {
+                      const double delta_temp = in.temperature[i]-reference_T;
+                      visc_temperature_dependence = std::max(std::min(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/reference_T),1e4),1e-4);
+                    }
+                    else
+                    {
+                      visc_temperature_dependence = 1.;
+                    }
                 }
               melt_out->compaction_viscosities[i] *= visc_temperature_dependence;
             }
