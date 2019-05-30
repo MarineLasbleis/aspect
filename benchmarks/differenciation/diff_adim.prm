@@ -128,8 +128,8 @@ subsection Geometry model
   set Model name = box
 
   subsection Box
-    set X extent = 0.25
-    set Y extent = 100.
+    set X extent = 0.025
+    set Y extent = 10.
     set Y repetitions = 400
     set X repetitions = 1
   end
@@ -266,7 +266,7 @@ subsection Postprocess
 
     set Number of grouped files       = 1
     set Output format                 = gnuplot  # We use python to do the visualization, through the gnuplots outputs.
-    set Time between graphical output = 10. 
+    set Time between graphical output = 1. 
   end
 
 
