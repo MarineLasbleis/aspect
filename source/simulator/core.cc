@@ -795,16 +795,17 @@ namespace aspect
 
     if (parameters.include_melt_transport)
       {
-        for (std::set<types::boundary_id>::const_iterator
-             p = boundary_temperature_manager.get_fixed_temperature_boundary_indicators().begin();
-             p != boundary_temperature_manager.get_fixed_temperature_boundary_indicators().end(); ++p)
+        for (std::map<types::boundary_id,std::pair<std::string,std::string> >::const_iterator
+             p = parameters.prescribed_traction_boundary_indicators.begin();
+             p != parameters.prescribed_traction_boundary_indicators.end();
+             ++p)
           {
             VectorTools::interpolate_boundary_values (*mapping,
                                                       dof_handler,
-                                                      *p,
+                                                      p->first,
                                                       ZeroFunction<dim>(introspection.n_components),
                                                       new_current_constraints,
-                                                      introspection.variable("compaction pressure").component_mask);
+                                                      introspection.variable("fluid pressure").component_mask);
           }
       }
 
